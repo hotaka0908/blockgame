@@ -125,6 +125,7 @@
         let activePowerUps = {
             widePaddle: 0,
             slowBall: 0,
+            slowBallActive: false,
             barrier: 0,
             penetrating: 0,
             laser: 0
@@ -530,16 +531,21 @@
                     paddle.width = 180;
                     break;
                 case 'slow':
+                    // スロー効果が既に有効でない場合のみ速度を半減
+                    if (!activePowerUps.slowBallActive) {
+                        activePowerUps.slowBallActive = true;
+                        balls.forEach(b => {
+                            b.dx *= 0.5;
+                            b.dy *= 0.5;
+                        });
+                    }
+                    // タイマーを延長
                     activePowerUps.slowBall = Date.now() + 8000; // 8秒間
-                    balls.forEach(b => {
-                        b.dx *= 0.5;
-                        b.dy *= 0.5;
-                    });
                     break;
                 case 'multi':
-                    // ボールを3個に分裂
-                    const mainBall = balls[0];
-                    if (mainBall && balls.length < 10) { // 最大10個まで
+                    // ボールを3個に分裂（ボールが存在する場合）
+                    if (balls.length > 0 && balls.length < 10) { // 最大10個まで
+                        const mainBall = balls[balls.length - 1]; // 最新のボールを基準に
                         for (let i = 0; i < 2; i++) {
                             balls.push({
                                 x: mainBall.x,
@@ -574,15 +580,19 @@
 
             if (activePowerUps.widePaddle > 0 && now > activePowerUps.widePaddle) {
                 activePowerUps.widePaddle = 0;
-                paddle.width = 120;
+                paddle.width = paddle.defaultWidth;
             }
 
             if (activePowerUps.slowBall > 0 && now > activePowerUps.slowBall) {
                 activePowerUps.slowBall = 0;
-                balls.forEach(b => {
-                    b.dx *= 2;
-                    b.dy *= 2;
-                });
+                // スロー効果が有効だった場合のみ速度を戻す
+                if (activePowerUps.slowBallActive) {
+                    activePowerUps.slowBallActive = false;
+                    balls.forEach(b => {
+                        b.dx *= 2;
+                        b.dy *= 2;
+                    });
+                }
             }
 
             if (activePowerUps.barrier > 0 && now > activePowerUps.barrier) {
@@ -1148,6 +1158,7 @@
             activePowerUps = {
                 widePaddle: 0,
                 slowBall: 0,
+                slowBallActive: false,
                 barrier: 0,
                 penetrating: 0,
                 laser: 0
@@ -1178,6 +1189,7 @@
             activePowerUps = {
                 widePaddle: 0,
                 slowBall: 0,
+                slowBallActive: false,
                 barrier: 0,
                 penetrating: 0,
                 laser: 0
