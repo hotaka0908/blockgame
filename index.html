@@ -1048,9 +1048,6 @@
                 }
                 lastHitTime = now;
 
-                // パーティクル生成
-                createParticles(hitX, hitY, block.color, 15);
-
                 // スコア計算（コンボボーナス）
                 let points = block.points;
                 if (block.type === 'bonus') points *= 5;
@@ -1068,7 +1065,6 @@
                     if (window.playGameSound) {
                         window.playGameSound('explosion');
                     }
-                    createParticles(hitX, hitY, '#ff4757', 30);
 
                     // 周囲のブロックも破壊
                     blocks.forEach(b => {
