@@ -1,0 +1,931 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ブロック崩し</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            color: white;
+            min-height: 100vh;
+        }
+
+        h1 {
+            margin: 0 0 20px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+
+        #gameContainer {
+            position: relative;
+            border: 3px solid white;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            background: #000;
+        }
+
+        canvas {
+            display: block;
+            border-radius: 7px;
+        }
+
+        #gameInfo {
+            display: flex;
+            justify-content: space-between;
+            width: 800px;
+            margin-bottom: 10px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+
+        #instructions {
+            margin-top: 20px;
+            text-align: center;
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 10px;
+            backdrop-filter: blur(10px);
+        }
+
+        .game-over {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            font-size: 24px;
+            z-index: 10;
+        }
+
+        .restart-btn {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: transform 0.2s;
+        }
+
+        .restart-btn:hover {
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <h1>🎮 ブロック崩し 🎮</h1>
+
+    <div id="gameInfo">
+        <div>スコア: <span id="score">0</span></div>
+        <div>ライフ: <span id="lives">3</span></div>
+        <div>レベル: <span id="level">1</span></div>
+    </div>
+
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    </div>
+
+    <div id="instructions">
+        <p>← → キーでパドルを移動　|　スペースキーでゲーム開始/一時停止</p>
+        <p>すべてのブロックを壊してクリアしよう！</p>
+        <p>🎵 ゲーム開始でクラブミュージックが流れます 🎵</p>
+        <p>🐱 猫をマウスでドラッグして動かせます！ 🐱</p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // オーディオ設定
+        let audioContext;
+        let masterGain;
+        let isAudioInitialized = false;
+        let isPlaying = false;
+
+        // オーディオ初期化
+        function initAudio() {
+            if (isAudioInitialized) return;
+
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioContext.createGain();
+            masterGain.connect(audioContext.destination);
+            masterGain.gain.value = 0.3;
+
+            isAudioInitialized = true;
+            startClubMusic();
+        }
+
+        // クラブ風音楽生成
+        function startClubMusic() {
+            if (isPlaying) return;
+            isPlaying = true;
+
+            // キックドラム（4/4拍子）
+            function playKick() {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+
+                oscillator.frequency.setValueAtTime(60, audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(0.1, audioContext.currentTime + 0.1);
+
+                filter.type = 'lowpass';
+                filter.frequency.value = 100;
+
+                gainNode.gain.setValueAtTime(0.8, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+
+                oscillator.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(masterGain);
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+
+            // ハイハット
+            function playHiHat() {
+                const bufferSize = audioContext.sampleRate * 0.1;
+                const buffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+                const output = buffer.getChannelData(0);
+
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 2);
+                }
+
+                const noise = audioContext.createBufferSource();
+                const gainNode = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+
+                noise.buffer = buffer;
+                filter.type = 'highpass';
+                filter.frequency.value = 8000;
+
+                gainNode.gain.setValueAtTime(0.2, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+                noise.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(masterGain);
+
+                noise.start(audioContext.currentTime);
+            }
+
+            // ベースライン
+            function playBass(frequency) {
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.value = frequency;
+
+                filter.type = 'lowpass';
+                filter.frequency.value = 300;
+                filter.Q.value = 5;
+
+                gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioContext.currentTime + 0.2);
+
+                oscillator.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(masterGain);
+
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+
+            // シンセパッド
+            function playSynth(frequency, duration = 2) {
+                const oscillator1 = audioContext.createOscillator();
+                const oscillator2 = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                const filter = audioContext.createBiquadFilter();
+
+                oscillator1.type = 'sawtooth';
+                oscillator1.frequency.value = frequency;
+                oscillator2.type = 'square';
+                oscillator2.frequency.value = frequency * 1.005;
+
+                filter.type = 'lowpass';
+                filter.frequency.value = 1000;
+
+                gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.15, audioContext.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.15, audioContext.currentTime + duration - 0.1);
+                gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + duration);
+
+                oscillator1.connect(filter);
+                oscillator2.connect(filter);
+                filter.connect(gainNode);
+                gainNode.connect(masterGain);
+
+                oscillator1.start(audioContext.currentTime);
+                oscillator2.start(audioContext.currentTime);
+                oscillator1.stop(audioContext.currentTime + duration);
+                oscillator2.stop(audioContext.currentTime + duration);
+            }
+
+            // 効果音
+            function playGameSound(type) {
+                switch(type) {
+                    case 'hit':
+                        const hitOsc = audioContext.createOscillator();
+                        const hitGain = audioContext.createGain();
+                        hitOsc.frequency.setValueAtTime(800, audioContext.currentTime);
+                        hitOsc.frequency.exponentialRampToValueAtTime(200, audioContext.currentTime + 0.1);
+                        hitGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+                        hitGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+                        hitOsc.connect(hitGain);
+                        hitGain.connect(masterGain);
+                        hitOsc.start();
+                        hitOsc.stop(audioContext.currentTime + 0.1);
+                        break;
+
+                    case 'bounce':
+                        const bounceOsc = audioContext.createOscillator();
+                        const bounceGain = audioContext.createGain();
+                        bounceOsc.frequency.value = 400;
+                        bounceGain.gain.setValueAtTime(0.2, audioContext.currentTime);
+                        bounceGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.05);
+                        bounceOsc.connect(bounceGain);
+                        bounceGain.connect(masterGain);
+                        bounceOsc.start();
+                        bounceOsc.stop(audioContext.currentTime + 0.05);
+                        break;
+
+                    case 'happy':
+                        const frequencies = [523.25, 659.25, 783.99];
+                        frequencies.forEach((freq, index) => {
+                            setTimeout(() => {
+                                const happyOsc = audioContext.createOscillator();
+                                const happyGain = audioContext.createGain();
+                                happyOsc.type = 'sine';
+                                happyOsc.frequency.value = freq;
+                                happyGain.gain.setValueAtTime(0.4, audioContext.currentTime);
+                                happyGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                                happyOsc.connect(happyGain);
+                                happyGain.connect(masterGain);
+                                happyOsc.start();
+                                happyOsc.stop(audioContext.currentTime + 0.3);
+                            }, index * 100);
+                        });
+                        break;
+
+                    case 'sad':
+                        const sadFreqs = [440, 349.23, 293.66];
+                        sadFreqs.forEach((freq, index) => {
+                            setTimeout(() => {
+                                const sadOsc = audioContext.createOscillator();
+                                const sadGain = audioContext.createGain();
+                                sadOsc.type = 'triangle';
+                                sadOsc.frequency.value = freq;
+                                sadGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+                                sadGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+                                sadOsc.connect(sadGain);
+                                sadGain.connect(masterGain);
+                                sadOsc.start();
+                                sadOsc.stop(audioContext.currentTime + 0.4);
+                            }, index * 150);
+                        });
+                        break;
+                }
+            }
+
+            // 音楽パターン
+            const bassNotes = [110, 110, 146.83, 146.83];
+            let beatCount = 0;
+            let barCount = 0;
+
+            function playMusicLoop() {
+                if (!isPlaying) return;
+
+                const beat = beatCount % 16;
+
+                if (beat % 4 === 0) {
+                    playKick();
+                }
+
+                if (beat % 2 === 1) {
+                    playHiHat();
+                }
+
+                if (beat % 4 === 0) {
+                    const noteIndex = Math.floor(beat / 4) % bassNotes.length;
+                    playBass(bassNotes[noteIndex]);
+                }
+
+                if (beat % 8 === 0) {
+                    const chordFreq = beat < 8 ? 220 : 293.66;
+                    playSynth(chordFreq, 2);
+                }
+
+                beatCount++;
+                if (beatCount >= 16) {
+                    beatCount = 0;
+                    barCount++;
+                }
+
+                setTimeout(playMusicLoop, 120000 / 128);
+            }
+
+            playMusicLoop();
+
+            window.playGameSound = playGameSound;
+        }
+
+        function stopMusic() {
+            isPlaying = false;
+        }
+
+        // 猫のアニメーション表示
+        function showCat(type) {
+            catAnimation = {
+                type: type,
+                startTime: Date.now(),
+                duration: 2000,
+                scale: 0,
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                isDragging: false,
+                dragOffsetX: 0,
+                dragOffsetY: 0
+            };
+        }
+
+        // 猫の描画
+        function drawCat() {
+            if (!catAnimation) return;
+
+            const elapsed = Date.now() - catAnimation.startTime;
+            const progress = elapsed / catAnimation.duration;
+
+            if (progress >= 1 && !catAnimation.isDragging) {
+                catAnimation = null;
+                canvas.style.cursor = 'default';
+                return;
+            }
+
+            const bounce = progress < 0.5 ?
+                2 * progress * progress :
+                1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+            catAnimation.scale = bounce;
+
+            const size = 120 * catAnimation.scale;
+            const dx = mouseX - catAnimation.x;
+            const dy = mouseY - catAnimation.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < size && !catAnimation.isDragging) {
+                canvas.style.cursor = 'grab';
+            } else if (!catAnimation.isDragging) {
+                canvas.style.cursor = 'default';
+            }
+
+            ctx.save();
+            ctx.translate(catAnimation.x, catAnimation.y);
+            ctx.scale(catAnimation.scale, catAnimation.scale);
+
+            if (catAnimation.type === 'happy') {
+                drawHappyCat();
+            } else {
+                drawSadCat();
+            }
+
+            ctx.restore();
+        }
+
+        // 喜んでいる猫の描画
+        function drawHappyCat() {
+            const size = 60;
+
+            ctx.fillStyle = '#FFA500';
+            ctx.beginPath();
+            ctx.arc(0, 0, size, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#FF8C00';
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.6, -size * 0.8);
+            ctx.lineTo(-size * 0.3, -size * 1.2);
+            ctx.lineTo(-size * 0.1, -size * 0.9);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(size * 0.6, -size * 0.8);
+            ctx.lineTo(size * 0.3, -size * 1.2);
+            ctx.lineTo(size * 0.1, -size * 0.9);
+            ctx.fill();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(-size * 0.3, -size * 0.2, size * 0.15, 0.2, Math.PI - 0.2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(size * 0.3, -size * 0.2, size * 0.15, 0.2, Math.PI - 0.2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#FF69B4';
+            ctx.beginPath();
+            ctx.arc(0, size * 0.1, size * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, size * 0.3, size * 0.3, 0.2, Math.PI - 0.2);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+                const y = -size * 0.1 + i * size * 0.1;
+                ctx.beginPath();
+                ctx.moveTo(-size * 0.8, y);
+                ctx.lineTo(-size * 0.5, y);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(size * 0.8, y);
+                ctx.lineTo(size * 0.5, y);
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = '#FFD700';
+            ctx.font = 'bold 24px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('やったー！', 0, -size * 1.5);
+
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * Math.PI * 2;
+                const x = Math.cos(angle) * size * 1.3;
+                const y = Math.sin(angle) * size * 1.3;
+
+                ctx.fillStyle = '#FFD700';
+                ctx.font = '20px Arial';
+                ctx.fillText('✨', x, y);
+            }
+        }
+
+        // 悲しい猫の描画
+        function drawSadCat() {
+            const size = 60;
+
+            ctx.fillStyle = '#808080';
+            ctx.beginPath();
+            ctx.arc(0, 0, size, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#696969';
+            ctx.beginPath();
+            ctx.moveTo(-size * 0.6, -size * 0.6);
+            ctx.lineTo(-size * 0.4, -size * 1.1);
+            ctx.lineTo(-size * 0.2, -size * 0.8);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(size * 0.6, -size * 0.6);
+            ctx.lineTo(size * 0.4, -size * 1.1);
+            ctx.lineTo(size * 0.2, -size * 0.8);
+            ctx.fill();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(-size * 0.3, -size * 0.2, size * 0.15, Math.PI + 0.2, -0.2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(size * 0.3, -size * 0.2, size * 0.15, Math.PI + 0.2, -0.2);
+            ctx.stroke();
+
+            ctx.fillStyle = '#87CEEB';
+            ctx.beginPath();
+            ctx.arc(-size * 0.3, size * 0.1, size * 0.05, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(size * 0.3, size * 0.1, size * 0.05, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.fillStyle = '#FF69B4';
+            ctx.beginPath();
+            ctx.arc(0, size * 0.1, size * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(0, size * 0.5, size * 0.2, Math.PI + 0.3, -0.3);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            for (let i = 0; i < 3; i++) {
+                const y = -size * 0.1 + i * size * 0.1;
+                const droop = 0.1;
+
+                ctx.beginPath();
+                ctx.moveTo(-size * 0.8, y);
+                ctx.lineTo(-size * 0.5, y + droop);
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(size * 0.8, y);
+                ctx.lineTo(size * 0.5, y + droop);
+                ctx.stroke();
+            }
+
+            ctx.fillStyle = '#4169E1';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('がーん...', 0, -size * 1.5);
+
+            for (let i = 0; i < 5; i++) {
+                const x = (Math.random() - 0.5) * size * 2;
+                const y = size * 1.2 + i * 15;
+
+                ctx.fillStyle = '#4682B4';
+                ctx.font = '16px Arial';
+                ctx.fillText('...', x, y);
+            }
+        }
+
+        // ゲーム状態
+        let gameState = 'waiting';
+        let score = 0;
+        let lives = 3;
+        let level = 1;
+        let blocksDestroyed = 0;
+        let catAnimation = null;
+
+        // パドル
+        const paddle = {
+            x: canvas.width / 2 - 60,
+            y: canvas.height - 30,
+            width: 120,
+            height: 12,
+            speed: 8
+        };
+
+        // ボール
+        const ball = {
+            x: canvas.width / 2,
+            y: canvas.height / 2,
+            radius: 8,
+            dx: 5,
+            dy: -5,
+            speed: 5
+        };
+
+        // ブロック
+        const blocks = [];
+        const blockRows = 6;
+        const blockCols = 10;
+        const blockWidth = 75;
+        const blockHeight = 25;
+        const blockPadding = 5;
+        const blockOffsetTop = 60;
+        const blockOffsetLeft = 35;
+
+        // カラーパレット
+        const blockColors = [
+            '#ff6b6b', '#feca57', '#48dbfb', '#ff9ff3',
+            '#54a0ff', '#5f27cd', '#00d2d3', '#ff9f43'
+        ];
+
+        // キー入力
+        const keys = {};
+
+        // マウス入力
+        let mouseX = 0;
+        let mouseY = 0;
+
+        // イベントリスナー
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            if (e.key === ' ') {
+                e.preventDefault();
+                if (gameState === 'waiting') {
+                    startGame();
+                } else if (gameState === 'playing') {
+                    pauseGame();
+                } else if (gameState === 'paused') {
+                    resumeGame();
+                }
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+        });
+
+        // マウスイベント
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+
+            if (catAnimation && catAnimation.isDragging) {
+                catAnimation.x = mouseX - catAnimation.dragOffsetX;
+                catAnimation.y = mouseY - catAnimation.dragOffsetY;
+            }
+        });
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (!catAnimation) return;
+
+            const rect = canvas.getBoundingClientRect();
+            mouseX = e.clientX - rect.left;
+            mouseY = e.clientY - rect.top;
+
+            const size = 120 * catAnimation.scale;
+            const dx = mouseX - catAnimation.x;
+            const dy = mouseY - catAnimation.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < size) {
+                catAnimation.isDragging = true;
+                catAnimation.dragOffsetX = dx;
+                catAnimation.dragOffsetY = dy;
+                canvas.style.cursor = 'grabbing';
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (catAnimation && catAnimation.isDragging) {
+                catAnimation.isDragging = false;
+                canvas.style.cursor = 'default';
+            }
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            if (catAnimation && catAnimation.isDragging) {
+                catAnimation.isDragging = false;
+                canvas.style.cursor = 'default';
+            }
+        });
+
+        // ブロック初期化
+        function initBlocks() {
+            blocks.length = 0;
+            for (let r = 0; r < blockRows; r++) {
+                for (let c = 0; c < blockCols; c++) {
+                    blocks.push({
+                        x: c * (blockWidth + blockPadding) + blockOffsetLeft,
+                        y: r * (blockHeight + blockPadding) + blockOffsetTop,
+                        width: blockWidth,
+                        height: blockHeight,
+                        color: blockColors[r % blockColors.length],
+                        visible: true,
+                        points: (blockRows - r) * 10
+                    });
+                }
+            }
+        }
+
+        // ゲーム開始
+        function startGame() {
+            if (!isAudioInitialized) {
+                initAudio();
+            }
+
+            gameState = 'playing';
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height - 100;
+            ball.dx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
+            ball.dy = -ball.speed;
+        }
+
+        // ゲーム一時停止
+        function pauseGame() {
+            gameState = 'paused';
+        }
+
+        // ゲーム再開
+        function resumeGame() {
+            gameState = 'playing';
+        }
+
+        // ゲームリセット
+        function resetGame() {
+            score = 0;
+            lives = 3;
+            level = 1;
+            blocksDestroyed = 0;
+            catAnimation = null;
+            gameState = 'waiting';
+            paddle.x = canvas.width / 2 - paddle.width / 2;
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            ball.speed = 5;
+            initBlocks();
+            updateUI();
+        }
+
+        // 次のレベル
+        function nextLevel() {
+            level++;
+            ball.speed += 0.5;
+            blocksDestroyed = 0;
+            gameState = 'waiting';
+            ball.x = canvas.width / 2;
+            ball.y = canvas.height / 2;
+            initBlocks();
+            updateUI();
+        }
+
+        // UI更新
+        function updateUI() {
+            document.getElementById('score').textContent = score;
+            document.getElementById('lives').textContent = lives;
+            document.getElementById('level').textContent = level;
+        }
+
+        // 衝突検出
+        function collision(ball, rect) {
+            return ball.x + ball.radius > rect.x &&
+                   ball.x - ball.radius < rect.x + rect.width &&
+                   ball.y + ball.radius > rect.y &&
+                   ball.y - ball.radius < rect.y + rect.height;
+        }
+
+        // ゲーム更新
+        function update() {
+            if (gameState !== 'playing') return;
+
+            if (keys['ArrowLeft'] && paddle.x > 0) {
+                paddle.x -= paddle.speed;
+            }
+            if (keys['ArrowRight'] && paddle.x < canvas.width - paddle.width) {
+                paddle.x += paddle.speed;
+            }
+
+            ball.x += ball.dx;
+            ball.y += ball.dy;
+
+            if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
+                ball.dx = -ball.dx;
+            }
+            if (ball.y - ball.radius < 0) {
+                ball.dy = -ball.dy;
+            }
+
+            if (collision(ball, paddle)) {
+                let hitPos = (ball.x - paddle.x) / paddle.width;
+                ball.dx = ball.speed * (hitPos - 0.5) * 1.5;
+                ball.dy = -Math.abs(ball.dy);
+
+                if (window.playGameSound) {
+                    window.playGameSound('bounce');
+                }
+            }
+
+            for (let block of blocks) {
+                if (block.visible && collision(ball, block)) {
+                    block.visible = false;
+                    ball.dy = -ball.dy;
+                    score += block.points;
+                    blocksDestroyed++;
+                    updateUI();
+
+                    if (window.playGameSound) {
+                        window.playGameSound('hit');
+                    }
+
+                    if (blocksDestroyed % 5 === 0) {
+                        showCat('happy');
+                        if (window.playGameSound) {
+                            window.playGameSound('happy');
+                        }
+                    }
+                    break;
+                }
+            }
+
+            if (ball.y > canvas.height) {
+                lives--;
+                updateUI();
+
+                showCat('sad');
+                if (window.playGameSound) {
+                    window.playGameSound('sad');
+                }
+
+                if (lives <= 0) {
+                    gameState = 'gameOver';
+                } else {
+                    gameState = 'waiting';
+                    ball.x = canvas.width / 2;
+                    ball.y = canvas.height / 2;
+                }
+            }
+
+            if (blocks.every(block => !block.visible)) {
+                gameState = 'levelComplete';
+                setTimeout(() => nextLevel(), 1500);
+            }
+        }
+
+        // 描画
+        function draw() {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+
+            const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.height);
+            gradient.addColorStop(0, '#fff');
+            gradient.addColorStop(1, '#ccc');
+            ctx.fillStyle = gradient;
+            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
+
+            ctx.beginPath();
+            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.fill();
+            ctx.closePath();
+
+            for (let block of blocks) {
+                if (block.visible) {
+                    ctx.fillStyle = block.color;
+                    ctx.fillRect(block.x, block.y, block.width, block.height);
+
+                    ctx.strokeStyle = '#333';
+                    ctx.lineWidth = 1;
+                    ctx.strokeRect(block.x, block.y, block.width, block.height);
+                }
+            }
+
+            drawCat();
+
+            ctx.fillStyle = '#fff';
+            ctx.font = '24px Arial';
+            ctx.textAlign = 'center';
+
+            if (gameState === 'waiting') {
+                ctx.fillText('スペースキーでゲーム開始', canvas.width / 2, canvas.height / 2 + 50);
+            } else if (gameState === 'paused') {
+                ctx.fillText('一時停止中 - スペースキーで再開', canvas.width / 2, canvas.height / 2);
+            } else if (gameState === 'gameOver') {
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#ff6b6b';
+                ctx.font = '36px Arial';
+                ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
+                ctx.fillStyle = '#fff';
+                ctx.font = '18px Arial';
+                ctx.fillText('F5キーでリスタート', canvas.width / 2, canvas.height / 2 + 20);
+            } else if (gameState === 'levelComplete') {
+                ctx.fillStyle = '#48dbfb';
+                ctx.font = '36px Arial';
+                ctx.fillText('LEVEL CLEAR!', canvas.width / 2, canvas.height / 2);
+                ctx.fillStyle = '#fff';
+                ctx.font = '18px Arial';
+                ctx.fillText('次のレベルへ...', canvas.width / 2, canvas.height / 2 + 40);
+            }
+        }
+
+        // ゲームループ
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // ゲーム初期化
+        function init() {
+            initBlocks();
+            updateUI();
+            gameLoop();
+        }
+
+        // ページリロードでリスタート
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'F5' && gameState === 'gameOver') {
+                e.preventDefault();
+                location.reload();
+            }
+        });
+
+        // ゲーム開始
+        init();
+    </script>
+</body>
+</html>
