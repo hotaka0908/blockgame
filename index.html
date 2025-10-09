@@ -891,7 +891,7 @@
                 ctx.fillText('GAME OVER', canvas.width / 2, canvas.height / 2 - 20);
                 ctx.fillStyle = '#fff';
                 ctx.font = '18px Arial';
-                ctx.fillText('F5キーでリスタート', canvas.width / 2, canvas.height / 2 + 20);
+                ctx.fillText('Enterキーでリスタート', canvas.width / 2, canvas.height / 2 + 20);
             } else if (gameState === 'levelComplete') {
                 ctx.fillStyle = '#48dbfb';
                 ctx.font = '36px Arial';
@@ -916,11 +916,11 @@
             gameLoop();
         }
 
-        // ページリロードでリスタート
+        // Enterキーでリスタート
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'F5' && gameState === 'gameOver') {
+            if (e.key === 'Enter' && gameState === 'gameOver') {
                 e.preventDefault();
-                location.reload();
+                resetGame();
             }
         });
 
