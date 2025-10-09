@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ブロック崩し</title>
+    <title>ブロック崩し - パワーアップ版</title>
     <style>
         body {
             margin: 0;
@@ -85,12 +85,13 @@
     </style>
 </head>
 <body>
-    <h1>🎮 ブロック崩し 🎮</h1>
+    <h1>🎮 ブロック崩し - パワーアップ版 🎮</h1>
 
     <div id="gameInfo">
         <div>スコア: <span id="score">0</span></div>
         <div>ライフ: <span id="lives">3</span></div>
         <div>レベル: <span id="level">1</span></div>
+        <div>コンボ: <span id="combo">0</span></div>
     </div>
 
     <div id="gameContainer">
@@ -98,10 +99,10 @@
     </div>
 
     <div id="instructions">
-        <p>← → キーでパドルを移動　|　スペースキーでゲーム開始/一時停止</p>
-        <p>すべてのブロックを壊してクリアしよう！</p>
-        <p>🎵 ゲーム開始でクラブミュージックが流れます 🎵</p>
-        <p>🐱 猫をマウスでドラッグして動かせます！ 🐱</p>
+        <p>← → キーでパドルを移動　|　スペースキーでゲーム開始/一時停止　|　レーザー時はクリックで発射</p>
+        <p>🎁 アイテム: 🔵ワイド 🐌スロー 🎯マルチボール 🛡️バリア ⭐貫通 ❤️ライフ 🔫レーザー</p>
+        <p>💎 特殊ブロック: 💎ボーナス 🪨硬い(2回) 💣爆発 🌈レインボー</p>
+        <p>🐱 猫をマウスでドラッグして動かせます！</p>
     </div>
 
     <script>
@@ -113,6 +114,26 @@
         let masterGain;
         let isAudioInitialized = false;
         let isPlaying = false;
+
+        // アイテム設定
+        const powerUps = [];
+        const particles = [];
+        const lasers = [];
+        const balls = [];
+
+        // パワーアップ効果の状態
+        let activePowerUps = {
+            widePaddle: 0,
+            slowBall: 0,
+            barrier: 0,
+            penetrating: 0,
+            laser: 0
+        };
+
+        // コンボシステム
+        let combo = 0;
+        let lastHitTime = 0;
+        const comboTimeout = 2000; // 2秒以内に次を破壊するとコンボ継続
 
         // オーディオ初期化
         function initAudio() {
@@ -240,6 +261,8 @@
 
             // 効果音
             function playGameSound(type) {
+                if (!audioContext) return;
+
                 switch(type) {
                     case 'hit':
                         const hitOsc = audioContext.createOscillator();
@@ -264,6 +287,51 @@
                         bounceGain.connect(masterGain);
                         bounceOsc.start();
                         bounceOsc.stop(audioContext.currentTime + 0.05);
+                        break;
+
+                    case 'powerup':
+                        const pwrFreqs = [400, 500, 600, 700];
+                        pwrFreqs.forEach((freq, index) => {
+                            setTimeout(() => {
+                                const pwrOsc = audioContext.createOscillator();
+                                const pwrGain = audioContext.createGain();
+                                pwrOsc.type = 'square';
+                                pwrOsc.frequency.value = freq;
+                                pwrGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+                                pwrGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.2);
+                                pwrOsc.connect(pwrGain);
+                                pwrGain.connect(masterGain);
+                                pwrOsc.start();
+                                pwrOsc.stop(audioContext.currentTime + 0.2);
+                            }, index * 50);
+                        });
+                        break;
+
+                    case 'explosion':
+                        const expOsc = audioContext.createOscillator();
+                        const expGain = audioContext.createGain();
+                        expOsc.type = 'sawtooth';
+                        expOsc.frequency.setValueAtTime(200, audioContext.currentTime);
+                        expOsc.frequency.exponentialRampToValueAtTime(50, audioContext.currentTime + 0.3);
+                        expGain.gain.setValueAtTime(0.5, audioContext.currentTime);
+                        expGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+                        expOsc.connect(expGain);
+                        expGain.connect(masterGain);
+                        expOsc.start();
+                        expOsc.stop(audioContext.currentTime + 0.3);
+                        break;
+
+                    case 'laser':
+                        const laserOsc = audioContext.createOscillator();
+                        const laserGain = audioContext.createGain();
+                        laserOsc.frequency.setValueAtTime(1000, audioContext.currentTime);
+                        laserOsc.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.15);
+                        laserGain.gain.setValueAtTime(0.3, audioContext.currentTime);
+                        laserGain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.15);
+                        laserOsc.connect(laserGain);
+                        laserGain.connect(masterGain);
+                        laserOsc.start();
+                        laserOsc.stop(audioContext.currentTime + 0.15);
                         break;
 
                     case 'happy':
@@ -348,6 +416,248 @@
 
         function stopMusic() {
             isPlaying = false;
+        }
+
+        // パーティクル生成
+        function createParticles(x, y, color, count = 10) {
+            for (let i = 0; i < count; i++) {
+                const angle = (Math.PI * 2 * i) / count;
+                const speed = 2 + Math.random() * 3;
+                particles.push({
+                    x: x,
+                    y: y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    life: 1,
+                    color: color,
+                    size: 3 + Math.random() * 3
+                });
+            }
+        }
+
+        // パーティクル更新
+        function updateParticles() {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.1; // 重力
+                p.life -= 0.02;
+
+                if (p.life <= 0) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // パーティクル描画
+        function drawParticles() {
+            particles.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.globalAlpha = 1;
+            });
+        }
+
+        // アイテムドロップ
+        function dropPowerUp(x, y) {
+            if (Math.random() > 0.3) return; // 30%の確率でドロップ
+
+            const types = [
+                { type: 'wide', emoji: '🔵', color: '#54a0ff' },
+                { type: 'slow', emoji: '🐌', color: '#48dbfb' },
+                { type: 'multi', emoji: '🎯', color: '#ff9ff3' },
+                { type: 'barrier', emoji: '🛡️', color: '#feca57' },
+                { type: 'penetrating', emoji: '⭐', color: '#FFD700' },
+                { type: 'life', emoji: '❤️', color: '#ff6b6b' },
+                { type: 'laser', emoji: '🔫', color: '#5f27cd' }
+            ];
+
+            const item = types[Math.floor(Math.random() * types.length)];
+            powerUps.push({
+                x: x,
+                y: y,
+                type: item.type,
+                emoji: item.emoji,
+                color: item.color,
+                speed: 2
+            });
+        }
+
+        // パワーアップ更新
+        function updatePowerUps() {
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const pu = powerUps[i];
+                pu.y += pu.speed;
+
+                // パドルとの衝突判定
+                if (pu.y + 15 > paddle.y &&
+                    pu.x > paddle.x &&
+                    pu.x < paddle.x + paddle.width) {
+                    activatePowerUp(pu.type);
+                    powerUps.splice(i, 1);
+                    if (window.playGameSound) {
+                        window.playGameSound('powerup');
+                    }
+                } else if (pu.y > canvas.height) {
+                    powerUps.splice(i, 1);
+                }
+            }
+        }
+
+        // パワーアップ描画
+        function drawPowerUps() {
+            powerUps.forEach(pu => {
+                ctx.fillStyle = pu.color;
+                ctx.beginPath();
+                ctx.arc(pu.x, pu.y, 15, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(pu.emoji, pu.x, pu.y);
+            });
+        }
+
+        // パワーアップ効果発動
+        function activatePowerUp(type) {
+            switch(type) {
+                case 'wide':
+                    activePowerUps.widePaddle = Date.now() + 10000; // 10秒間
+                    paddle.width = 180;
+                    break;
+                case 'slow':
+                    activePowerUps.slowBall = Date.now() + 8000; // 8秒間
+                    balls.forEach(b => {
+                        b.dx *= 0.5;
+                        b.dy *= 0.5;
+                    });
+                    break;
+                case 'multi':
+                    // ボールを3個に分裂
+                    const mainBall = balls[0];
+                    if (mainBall && balls.length < 10) { // 最大10個まで
+                        for (let i = 0; i < 2; i++) {
+                            balls.push({
+                                x: mainBall.x,
+                                y: mainBall.y,
+                                radius: mainBall.radius,
+                                dx: mainBall.dx * (Math.random() > 0.5 ? 1.2 : 0.8),
+                                dy: mainBall.dy * (Math.random() > 0.5 ? 1.2 : 0.8),
+                                speed: mainBall.speed
+                            });
+                        }
+                    }
+                    break;
+                case 'barrier':
+                    activePowerUps.barrier = Date.now() + 15000; // 15秒間
+                    break;
+                case 'penetrating':
+                    activePowerUps.penetrating = Date.now() + 12000; // 12秒間
+                    break;
+                case 'life':
+                    lives++;
+                    updateUI();
+                    break;
+                case 'laser':
+                    activePowerUps.laser = Date.now() + 10000; // 10秒間
+                    break;
+            }
+        }
+
+        // パワーアップ効果更新
+        function updatePowerUpEffects() {
+            const now = Date.now();
+
+            if (activePowerUps.widePaddle > 0 && now > activePowerUps.widePaddle) {
+                activePowerUps.widePaddle = 0;
+                paddle.width = 120;
+            }
+
+            if (activePowerUps.slowBall > 0 && now > activePowerUps.slowBall) {
+                activePowerUps.slowBall = 0;
+                balls.forEach(b => {
+                    b.dx *= 2;
+                    b.dy *= 2;
+                });
+            }
+
+            if (activePowerUps.barrier > 0 && now > activePowerUps.barrier) {
+                activePowerUps.barrier = 0;
+            }
+
+            if (activePowerUps.penetrating > 0 && now > activePowerUps.penetrating) {
+                activePowerUps.penetrating = 0;
+            }
+
+            if (activePowerUps.laser > 0 && now > activePowerUps.laser) {
+                activePowerUps.laser = 0;
+            }
+        }
+
+        // レーザー発射
+        function fireLaser() {
+            if (activePowerUps.laser <= 0) return;
+
+            lasers.push({
+                x: paddle.x + paddle.width / 2 - 2,
+                y: paddle.y,
+                width: 4,
+                height: 20,
+                speed: 8
+            });
+
+            if (window.playGameSound) {
+                window.playGameSound('laser');
+            }
+        }
+
+        // レーザー更新
+        function updateLasers() {
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                const laser = lasers[i];
+                laser.y -= laser.speed;
+
+                // ブロックとの衝突判定
+                for (let block of blocks) {
+                    if (block.visible &&
+                        laser.x < block.x + block.width &&
+                        laser.x + laser.width > block.x &&
+                        laser.y < block.y + block.height &&
+                        laser.y + laser.height > block.y) {
+
+                        destroyBlock(block, laser.x + laser.width / 2, laser.y);
+                        lasers.splice(i, 1);
+                        break;
+                    }
+                }
+
+                if (laser.y < 0) {
+                    lasers.splice(i, 1);
+                }
+            }
+        }
+
+        // レーザー描画
+        function drawLasers() {
+            ctx.fillStyle = '#ff0000';
+            lasers.forEach(laser => {
+                ctx.fillRect(laser.x, laser.y, laser.width, laser.height);
+            });
+        }
+
+        // バリア描画
+        function drawBarrier() {
+            if (activePowerUps.barrier <= 0) return;
+
+            const remaining = (activePowerUps.barrier - Date.now()) / 15000;
+            ctx.globalAlpha = 0.3 + (remaining * 0.4);
+            ctx.fillStyle = '#feca57';
+            ctx.fillRect(0, canvas.height - 15, canvas.width, 5);
+            ctx.globalAlpha = 1;
         }
 
         // 猫のアニメーション表示
@@ -580,17 +890,8 @@
             y: canvas.height - 30,
             width: 120,
             height: 12,
-            speed: 8
-        };
-
-        // ボール
-        const ball = {
-            x: canvas.width / 2,
-            y: canvas.height / 2,
-            radius: 8,
-            dx: 5,
-            dy: -5,
-            speed: 5
+            speed: 8,
+            defaultWidth: 120
         };
 
         // ブロック
@@ -648,22 +949,29 @@
         });
 
         canvas.addEventListener('mousedown', (e) => {
-            if (!catAnimation) return;
+            // 猫のドラッグ判定
+            if (catAnimation) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.clientX - rect.left;
+                mouseY = e.clientY - rect.top;
 
-            const rect = canvas.getBoundingClientRect();
-            mouseX = e.clientX - rect.left;
-            mouseY = e.clientY - rect.top;
+                const size = 120 * catAnimation.scale;
+                const dx = mouseX - catAnimation.x;
+                const dy = mouseY - catAnimation.y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
 
-            const size = 120 * catAnimation.scale;
-            const dx = mouseX - catAnimation.x;
-            const dy = mouseY - catAnimation.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
+                if (distance < size) {
+                    catAnimation.isDragging = true;
+                    catAnimation.dragOffsetX = dx;
+                    catAnimation.dragOffsetY = dy;
+                    canvas.style.cursor = 'grabbing';
+                    return;
+                }
+            }
 
-            if (distance < size) {
-                catAnimation.isDragging = true;
-                catAnimation.dragOffsetX = dx;
-                catAnimation.dragOffsetY = dy;
-                canvas.style.cursor = 'grabbing';
+            // レーザー発射
+            if (gameState === 'playing') {
+                fireLaser();
             }
         });
 
@@ -686,15 +994,105 @@
             blocks.length = 0;
             for (let r = 0; r < blockRows; r++) {
                 for (let c = 0; c < blockCols; c++) {
+                    const rand = Math.random();
+                    let type = 'normal';
+                    let hits = 1;
+                    let color = blockColors[r % blockColors.length];
+
+                    // 特殊ブロックの配置
+                    if (rand < 0.05) {
+                        type = 'bonus';
+                        color = '#FFD700';
+                    } else if (rand < 0.15) {
+                        type = 'hard';
+                        hits = 2;
+                        color = '#808080';
+                    } else if (rand < 0.2) {
+                        type = 'explosive';
+                        color = '#ff4757';
+                    } else if (rand < 0.25) {
+                        type = 'rainbow';
+                        color = '#00d2d3';
+                    }
+
                     blocks.push({
                         x: c * (blockWidth + blockPadding) + blockOffsetLeft,
                         y: r * (blockHeight + blockPadding) + blockOffsetTop,
                         width: blockWidth,
                         height: blockHeight,
-                        color: blockColors[r % blockColors.length],
+                        color: color,
                         visible: true,
-                        points: (blockRows - r) * 10
+                        points: (blockRows - r) * 10,
+                        type: type,
+                        hits: hits,
+                        maxHits: hits,
+                        rainbowHue: 0
                     });
+                }
+            }
+        }
+
+        // ブロック破壊処理
+        function destroyBlock(block, hitX, hitY) {
+            block.hits--;
+
+            if (block.hits <= 0) {
+                block.visible = false;
+
+                // コンボ処理
+                const now = Date.now();
+                if (now - lastHitTime < comboTimeout) {
+                    combo++;
+                } else {
+                    combo = 1;
+                }
+                lastHitTime = now;
+
+                // パーティクル生成
+                createParticles(hitX, hitY, block.color, 15);
+
+                // スコア計算（コンボボーナス）
+                let points = block.points;
+                if (block.type === 'bonus') points *= 5;
+                points *= combo;
+                score += points;
+
+                blocksDestroyed++;
+                updateUI();
+
+                // アイテムドロップ
+                dropPowerUp(block.x + block.width / 2, block.y + block.height / 2);
+
+                // 爆発ブロック処理
+                if (block.type === 'explosive') {
+                    if (window.playGameSound) {
+                        window.playGameSound('explosion');
+                    }
+                    createParticles(hitX, hitY, '#ff4757', 30);
+
+                    // 周囲のブロックも破壊
+                    blocks.forEach(b => {
+                        if (b.visible && b !== block) {
+                            const dx = (b.x + b.width / 2) - hitX;
+                            const dy = (b.y + b.height / 2) - hitY;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance < 100) {
+                                setTimeout(() => {
+                                    if (b.visible) {
+                                        destroyBlock(b, b.x + b.width / 2, b.y + b.height / 2);
+                                    }
+                                }, 100);
+                            }
+                        }
+                    });
+                }
+
+                // 猫表示（5個破壊ごと）
+                if (blocksDestroyed % 5 === 0) {
+                    showCat('happy');
+                    if (window.playGameSound) {
+                        window.playGameSound('happy');
+                    }
                 }
             }
         }
@@ -706,10 +1104,24 @@
             }
 
             gameState = 'playing';
-            ball.x = canvas.width / 2;
-            ball.y = canvas.height - 100;
-            ball.dx = (Math.random() > 0.5 ? 1 : -1) * ball.speed;
-            ball.dy = -ball.speed;
+
+            // 初回ボール設定
+            if (balls.length === 0) {
+                balls.push({
+                    x: canvas.width / 2,
+                    y: canvas.height - 100,
+                    radius: 8,
+                    dx: (Math.random() > 0.5 ? 1 : -1) * 5,
+                    dy: -5,
+                    speed: 5
+                });
+            } else {
+                // 待機状態から再開
+                balls[0].x = canvas.width / 2;
+                balls[0].y = canvas.height - 100;
+                balls[0].dx = (Math.random() > 0.5 ? 1 : -1) * balls[0].speed;
+                balls[0].dy = -balls[0].speed;
+            }
         }
 
         // ゲーム一時停止
@@ -728,12 +1140,22 @@
             lives = 3;
             level = 1;
             blocksDestroyed = 0;
+            combo = 0;
             catAnimation = null;
             gameState = 'waiting';
             paddle.x = canvas.width / 2 - paddle.width / 2;
-            ball.x = canvas.width / 2;
-            ball.y = canvas.height / 2;
-            ball.speed = 5;
+            paddle.width = paddle.defaultWidth;
+            balls.length = 0;
+            powerUps.length = 0;
+            particles.length = 0;
+            lasers.length = 0;
+            activePowerUps = {
+                widePaddle: 0,
+                slowBall: 0,
+                barrier: 0,
+                penetrating: 0,
+                laser: 0
+            };
             initBlocks();
             updateUI();
         }
@@ -741,11 +1163,29 @@
         // 次のレベル
         function nextLevel() {
             level++;
-            ball.speed += 0.5;
             blocksDestroyed = 0;
+            combo = 0;
             gameState = 'waiting';
-            ball.x = canvas.width / 2;
-            ball.y = canvas.height / 2;
+            balls.length = 0;
+            balls.push({
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                radius: 8,
+                dx: 5,
+                dy: -5,
+                speed: 5 + (level - 1) * 0.5
+            });
+            powerUps.length = 0;
+            particles.length = 0;
+            lasers.length = 0;
+            paddle.width = paddle.defaultWidth;
+            activePowerUps = {
+                widePaddle: 0,
+                slowBall: 0,
+                barrier: 0,
+                penetrating: 0,
+                laser: 0
+            };
             initBlocks();
             updateUI();
         }
@@ -755,6 +1195,7 @@
             document.getElementById('score').textContent = score;
             document.getElementById('lives').textContent = lives;
             document.getElementById('level').textContent = level;
+            document.getElementById('combo').textContent = combo;
         }
 
         // 衝突検出
@@ -769,6 +1210,13 @@
         function update() {
             if (gameState !== 'playing') return;
 
+            // コンボタイムアウトチェック
+            if (Date.now() - lastHitTime > comboTimeout) {
+                combo = 0;
+                updateUI();
+            }
+
+            // パドル移動
             if (keys['ArrowLeft'] && paddle.x > 0) {
                 paddle.x -= paddle.speed;
             }
@@ -776,66 +1224,89 @@
                 paddle.x += paddle.speed;
             }
 
-            ball.x += ball.dx;
-            ball.y += ball.dy;
+            // ボール更新
+            for (let i = balls.length - 1; i >= 0; i--) {
+                const ball = balls[i];
 
-            if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
-                ball.dx = -ball.dx;
-            }
-            if (ball.y - ball.radius < 0) {
-                ball.dy = -ball.dy;
-            }
+                ball.x += ball.dx;
+                ball.y += ball.dy;
 
-            if (collision(ball, paddle)) {
-                let hitPos = (ball.x - paddle.x) / paddle.width;
-                ball.dx = ball.speed * (hitPos - 0.5) * 1.5;
-                ball.dy = -Math.abs(ball.dy);
-
-                if (window.playGameSound) {
-                    window.playGameSound('bounce');
+                // 壁との衝突
+                if (ball.x + ball.radius > canvas.width || ball.x - ball.radius < 0) {
+                    ball.dx = -ball.dx;
                 }
-            }
-
-            for (let block of blocks) {
-                if (block.visible && collision(ball, block)) {
-                    block.visible = false;
+                if (ball.y - ball.radius < 0) {
                     ball.dy = -ball.dy;
-                    score += block.points;
-                    blocksDestroyed++;
-                    updateUI();
+                }
+
+                // パドルとの衝突
+                if (collision(ball, paddle)) {
+                    let hitPos = (ball.x - paddle.x) / paddle.width;
+                    ball.dx = ball.speed * (hitPos - 0.5) * 1.5;
+                    ball.dy = -Math.abs(ball.dy);
 
                     if (window.playGameSound) {
-                        window.playGameSound('hit');
+                        window.playGameSound('bounce');
                     }
+                }
 
-                    if (blocksDestroyed % 5 === 0) {
-                        showCat('happy');
+                // ブロックとの衝突
+                for (let block of blocks) {
+                    if (block.visible && collision(ball, block)) {
+                        if (!activePowerUps.penetrating) {
+                            ball.dy = -ball.dy;
+                        }
+
+                        destroyBlock(block, ball.x, ball.y);
+
                         if (window.playGameSound) {
-                            window.playGameSound('happy');
+                            window.playGameSound('hit');
+                        }
+
+                        if (!activePowerUps.penetrating) {
+                            break;
                         }
                     }
-                    break;
+                }
+
+                // バリアとの衝突
+                if (ball.y > canvas.height - 15 && activePowerUps.barrier > 0) {
+                    ball.dy = -Math.abs(ball.dy);
+                    if (window.playGameSound) {
+                        window.playGameSound('bounce');
+                    }
+                }
+
+                // ボールが下に落ちた
+                if (ball.y > canvas.height) {
+                    balls.splice(i, 1);
+
+                    if (balls.length === 0) {
+                        lives--;
+                        combo = 0;
+                        updateUI();
+
+                        showCat('sad');
+                        if (window.playGameSound) {
+                            window.playGameSound('sad');
+                        }
+
+                        if (lives <= 0) {
+                            gameState = 'gameOver';
+                        } else {
+                            gameState = 'waiting';
+                        }
+                    }
                 }
             }
 
-            if (ball.y > canvas.height) {
-                lives--;
-                updateUI();
+            // パワーアップ更新
+            updatePowerUps();
+            updatePowerUpEffects();
+            updateParticles();
+            updateLasers();
 
-                showCat('sad');
-                if (window.playGameSound) {
-                    window.playGameSound('sad');
-                }
-
-                if (lives <= 0) {
-                    gameState = 'gameOver';
-                } else {
-                    gameState = 'waiting';
-                    ball.x = canvas.width / 2;
-                    ball.y = canvas.height / 2;
-                }
-            }
-
+            // レベルクリア
             if (blocks.every(block => !block.visible)) {
                 gameState = 'levelComplete';
                 setTimeout(() => nextLevel(), 1500);
@@ -847,25 +1318,53 @@
             ctx.fillStyle = '#000';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            ctx.fillStyle = '#fff';
-            ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
-
+            // パドル描画
             const gradient = ctx.createLinearGradient(paddle.x, paddle.y, paddle.x, paddle.y + paddle.height);
             gradient.addColorStop(0, '#fff');
-            gradient.addColorStop(1, '#ccc');
+            gradient.addColorStop(1, activePowerUps.laser > 0 ? '#ff0000' : '#ccc');
             ctx.fillStyle = gradient;
             ctx.fillRect(paddle.x, paddle.y, paddle.width, paddle.height);
 
-            ctx.beginPath();
-            ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
-            ctx.fill();
-            ctx.closePath();
+            // ボール描画
+            balls.forEach(ball => {
+                ctx.beginPath();
+                ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+                if (activePowerUps.penetrating > 0) {
+                    ctx.fillStyle = '#FFD700';
+                } else {
+                    ctx.fillStyle = '#fff';
+                }
+                ctx.fill();
+                ctx.closePath();
+            });
 
+            // ブロック描画
             for (let block of blocks) {
                 if (block.visible) {
-                    ctx.fillStyle = block.color;
+                    // レインボーブロック
+                    if (block.type === 'rainbow') {
+                        block.rainbowHue = (block.rainbowHue + 2) % 360;
+                        ctx.fillStyle = `hsl(${block.rainbowHue}, 80%, 60%)`;
+                    } else {
+                        ctx.fillStyle = block.color;
+                    }
+
                     ctx.fillRect(block.x, block.y, block.width, block.height);
+
+                    // 特殊ブロックのアイコン
+                    ctx.font = '18px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    if (block.type === 'bonus') {
+                        ctx.fillText('💎', block.x + block.width / 2, block.y + block.height / 2);
+                    } else if (block.type === 'hard') {
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(block.hits, block.x + block.width / 2, block.y + block.height / 2);
+                    } else if (block.type === 'explosive') {
+                        ctx.fillText('💣', block.x + block.width / 2, block.y + block.height / 2);
+                    } else if (block.type === 'rainbow') {
+                        ctx.fillText('🌈', block.x + block.width / 2, block.y + block.height / 2);
+                    }
 
                     ctx.strokeStyle = '#333';
                     ctx.lineWidth = 1;
@@ -873,8 +1372,30 @@
                 }
             }
 
+            // バリア描画
+            drawBarrier();
+
+            // パワーアップ描画
+            drawPowerUps();
+
+            // レーザー描画
+            drawLasers();
+
+            // パーティクル描画
+            drawParticles();
+
+            // 猫描画
             drawCat();
 
+            // コンボ表示
+            if (combo > 1 && gameState === 'playing') {
+                ctx.fillStyle = '#FFD700';
+                ctx.font = 'bold 36px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`${combo}x COMBO!`, canvas.width / 2, 40);
+            }
+
+            // ゲーム状態メッセージ
             ctx.fillStyle = '#fff';
             ctx.font = '24px Arial';
             ctx.textAlign = 'center';
