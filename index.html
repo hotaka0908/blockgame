@@ -691,56 +691,51 @@
                 return;
             }
 
-            // 手が画面内に入ってくるアニメーション
-            let slideIn;
-            if (progress < 0.15) {
-                // 入ってくる
-                slideIn = progress / 0.15;
-            } else if (progress > 0.85) {
-                // 引っ込む
-                slideIn = (1 - progress) / 0.15;
+            // フェードイン・アウト
+            let alpha;
+            if (progress < 0.1) {
+                alpha = progress / 0.1;
+            } else if (progress > 0.9) {
+                alpha = (1 - progress) / 0.1;
             } else {
-                slideIn = 1;
+                alpha = 1;
             }
 
             // 手を振るアニメーション
             const waveSpeed = 12;
-            const waveAngle = Math.sin(elapsed / 1000 * waveSpeed) * 0.3;
+            const waveAngle = Math.sin(elapsed / 1000 * waveSpeed) * 0.4;
 
-            const pawSize = 80;
             const yPosition = canvas.height / 2;
 
-            // 左の手を描画
             ctx.save();
-            const leftX = -pawSize * (1 - slideIn);
-            ctx.translate(leftX, yPosition);
+            ctx.globalAlpha = alpha;
+
+            // 左の手を描画（画面外の左端から手だけ見える）
+            ctx.save();
+            ctx.translate(0, yPosition);
             ctx.rotate(waveAngle);
             drawCatPaw(catAnimation.type, 'left');
             ctx.restore();
 
-            // 右の手を描画
+            // 右の手を描画（画面外の右端から手だけ見える）
             ctx.save();
-            const rightX = canvas.width + pawSize * (1 - slideIn);
-            ctx.translate(rightX, yPosition);
+            ctx.translate(canvas.width, yPosition);
             ctx.rotate(-waveAngle);
             drawCatPaw(catAnimation.type, 'right');
             ctx.restore();
 
             // テキスト表示
-            if (slideIn > 0.5) {
-                ctx.save();
-                ctx.globalAlpha = slideIn;
-                ctx.font = 'bold 28px Arial';
-                ctx.textAlign = 'center';
-                if (catAnimation.type === 'happy') {
-                    ctx.fillStyle = '#FFD700';
-                    ctx.fillText('やったー！', canvas.width / 2, yPosition - 60);
-                } else {
-                    ctx.fillStyle = '#87CEEB';
-                    ctx.fillText('がんばれ...', canvas.width / 2, yPosition - 60);
-                }
-                ctx.restore();
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            if (catAnimation.type === 'happy') {
+                ctx.fillStyle = '#FFD700';
+                ctx.fillText('やったー！', canvas.width / 2, yPosition - 60);
+            } else {
+                ctx.fillStyle = '#87CEEB';
+                ctx.fillText('がんばれ...', canvas.width / 2, yPosition - 60);
             }
+
+            ctx.restore();
         }
 
         // 猫の手を描画
