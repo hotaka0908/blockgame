@@ -22,6 +22,18 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
         }
 
+        #gameWrapper {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .side-canvas {
+            width: 120px;
+            height: 600px;
+            display: block;
+        }
+
         #gameContainer {
             position: relative;
             border: 3px solid white;
@@ -30,7 +42,7 @@
             background: #000;
         }
 
-        canvas {
+        #gameCanvas {
             display: block;
             border-radius: 7px;
         }
@@ -85,13 +97,23 @@
         <div>コンボ: <span id="combo">0</span></div>
     </div>
 
-    <div id="gameContainer">
-        <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="gameWrapper">
+        <canvas id="leftCatCanvas" class="side-canvas" width="120" height="600"></canvas>
+        <div id="gameContainer">
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+        </div>
+        <canvas id="rightCatCanvas" class="side-canvas" width="120" height="600"></canvas>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+
+        // 左右の猫キャンバス
+        const leftCatCanvas = document.getElementById('leftCatCanvas');
+        const leftCatCtx = leftCatCanvas.getContext('2d');
+        const rightCatCanvas = document.getElementById('rightCatCanvas');
+        const rightCatCtx = rightCatCanvas.getContext('2d');
 
         // オーディオ設定
         let audioContext;
@@ -778,6 +800,334 @@
             ctx.restore();
         }
 
+        // サイドの猫キャラクターを描画
+        function drawSideCats() {
+            const time = Date.now() / 1000;
+
+            // 左の猫を描画
+            drawSideCat(leftCatCtx, leftCatCanvas, time, false);
+            // 右の猫を描画
+            drawSideCat(rightCatCtx, rightCatCanvas, time, true);
+        }
+
+        function drawSideCat(catCtx, catCanvas, time, isRight) {
+            catCtx.clearRect(0, 0, catCanvas.width, catCanvas.height);
+
+            const centerX = catCanvas.width / 2;
+            const centerY = catCanvas.height / 2;
+            const size = 40;
+
+            catCtx.save();
+            catCtx.translate(centerX, centerY);
+
+            if (gameState === 'waiting' || gameState === 'paused') {
+                // 待機中・一時停止: つまらなそうにしている
+                drawBoredCat(catCtx, time, size, isRight);
+            } else if (gameState === 'playing') {
+                // プレイ中: 踊っている
+                drawDancingCat(catCtx, time, size, isRight);
+            } else if (gameState === 'levelComplete') {
+                // レベルクリア: 喜んでいる
+                drawCelebratingCat(catCtx, time, size, isRight);
+            } else if (gameState === 'gameOver') {
+                // ゲームオーバー: 悲しそう
+                drawSadSideCat(catCtx, time, size, isRight);
+            }
+
+            catCtx.restore();
+        }
+
+        // つまらなそうな猫
+        function drawBoredCat(catCtx, time, size, isRight) {
+            // ゆっくり揺れる
+            const sway = Math.sin(time * 0.5) * 3;
+            catCtx.translate(sway, 0);
+
+            // 体
+            catCtx.fillStyle = '#FFA500';
+            catCtx.beginPath();
+            catCtx.ellipse(0, 20, size * 0.8, size, 0, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 顔
+            catCtx.beginPath();
+            catCtx.arc(0, -30, size * 0.8, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 耳
+            catCtx.fillStyle = '#FF8C00';
+            catCtx.beginPath();
+            catCtx.moveTo(-25, -55);
+            catCtx.lineTo(-15, -80);
+            catCtx.lineTo(-5, -55);
+            catCtx.fill();
+            catCtx.beginPath();
+            catCtx.moveTo(25, -55);
+            catCtx.lineTo(15, -80);
+            catCtx.lineTo(5, -55);
+            catCtx.fill();
+
+            // 半開きの目（眠そう）
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 3;
+            catCtx.beginPath();
+            catCtx.moveTo(-15, -35);
+            catCtx.lineTo(-5, -35);
+            catCtx.stroke();
+            catCtx.beginPath();
+            catCtx.moveTo(5, -35);
+            catCtx.lineTo(15, -35);
+            catCtx.stroke();
+
+            // 鼻
+            catCtx.fillStyle = '#FF69B4';
+            catCtx.beginPath();
+            catCtx.arc(0, -25, 4, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // への字口
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 2;
+            catCtx.beginPath();
+            catCtx.moveTo(-8, -15);
+            catCtx.lineTo(0, -18);
+            catCtx.lineTo(8, -15);
+            catCtx.stroke();
+
+            // ため息（...）
+            catCtx.fillStyle = '#888';
+            catCtx.font = '16px Arial';
+            catCtx.textAlign = 'center';
+            const dots = Math.floor(time % 3) + 1;
+            catCtx.fillText('.'.repeat(dots), 30, -50);
+        }
+
+        // 踊っている猫
+        function drawDancingCat(catCtx, time, size, isRight) {
+            // 踊りのアニメーション
+            const bounce = Math.sin(time * 8) * 10;
+            const rotate = Math.sin(time * 4) * 0.2;
+            const armWave = Math.sin(time * 6) * 0.5;
+
+            catCtx.rotate(rotate);
+            catCtx.translate(0, bounce);
+
+            // 体
+            catCtx.fillStyle = '#FFA500';
+            catCtx.beginPath();
+            catCtx.ellipse(0, 20, size * 0.8, size, 0, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 腕（左）
+            catCtx.save();
+            catCtx.translate(-30, 0);
+            catCtx.rotate(-0.5 + armWave);
+            catCtx.beginPath();
+            catCtx.ellipse(0, 20, 12, 25, 0, 0, Math.PI * 2);
+            catCtx.fill();
+            catCtx.restore();
+
+            // 腕（右）
+            catCtx.save();
+            catCtx.translate(30, 0);
+            catCtx.rotate(0.5 - armWave);
+            catCtx.beginPath();
+            catCtx.ellipse(0, 20, 12, 25, 0, 0, Math.PI * 2);
+            catCtx.fill();
+            catCtx.restore();
+
+            // 顔
+            catCtx.beginPath();
+            catCtx.arc(0, -30, size * 0.8, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 耳
+            catCtx.fillStyle = '#FF8C00';
+            catCtx.beginPath();
+            catCtx.moveTo(-25, -55);
+            catCtx.lineTo(-15, -80);
+            catCtx.lineTo(-5, -55);
+            catCtx.fill();
+            catCtx.beginPath();
+            catCtx.moveTo(25, -55);
+            catCtx.lineTo(15, -80);
+            catCtx.lineTo(5, -55);
+            catCtx.fill();
+
+            // 楽しそうな目（＾＾）
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 3;
+            catCtx.beginPath();
+            catCtx.arc(-10, -35, 8, Math.PI, 0);
+            catCtx.stroke();
+            catCtx.beginPath();
+            catCtx.arc(10, -35, 8, Math.PI, 0);
+            catCtx.stroke();
+
+            // 鼻
+            catCtx.fillStyle = '#FF69B4';
+            catCtx.beginPath();
+            catCtx.arc(0, -25, 4, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 笑顔
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 2;
+            catCtx.beginPath();
+            catCtx.arc(0, -20, 12, 0.2, Math.PI - 0.2);
+            catCtx.stroke();
+
+            // 音符
+            catCtx.fillStyle = '#FFD700';
+            catCtx.font = '20px Arial';
+            catCtx.textAlign = 'center';
+            const noteY = -80 + Math.sin(time * 3) * 10;
+            catCtx.fillText('♪', isRight ? -20 : 20, noteY);
+        }
+
+        // 喜んでいる猫（クリア時）
+        function drawCelebratingCat(catCtx, time, size, isRight) {
+            // ジャンプアニメーション
+            const jump = Math.abs(Math.sin(time * 5)) * 30;
+            const rotate = Math.sin(time * 3) * 0.3;
+
+            catCtx.rotate(rotate);
+            catCtx.translate(0, -jump);
+
+            // 体
+            catCtx.fillStyle = '#FFA500';
+            catCtx.beginPath();
+            catCtx.ellipse(0, 20, size * 0.8, size, 0, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 両腕を上げる
+            catCtx.save();
+            catCtx.translate(-30, -10);
+            catCtx.rotate(-1.2);
+            catCtx.beginPath();
+            catCtx.ellipse(0, 0, 12, 25, 0, 0, Math.PI * 2);
+            catCtx.fill();
+            catCtx.restore();
+
+            catCtx.save();
+            catCtx.translate(30, -10);
+            catCtx.rotate(1.2);
+            catCtx.beginPath();
+            catCtx.ellipse(0, 0, 12, 25, 0, 0, Math.PI * 2);
+            catCtx.fill();
+            catCtx.restore();
+
+            // 顔
+            catCtx.beginPath();
+            catCtx.arc(0, -30, size * 0.8, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 耳
+            catCtx.fillStyle = '#FF8C00';
+            catCtx.beginPath();
+            catCtx.moveTo(-25, -55);
+            catCtx.lineTo(-15, -80);
+            catCtx.lineTo(-5, -55);
+            catCtx.fill();
+            catCtx.beginPath();
+            catCtx.moveTo(25, -55);
+            catCtx.lineTo(15, -80);
+            catCtx.lineTo(5, -55);
+            catCtx.fill();
+
+            // キラキラの目
+            catCtx.fillStyle = '#333';
+            catCtx.font = '16px Arial';
+            catCtx.textAlign = 'center';
+            catCtx.fillText('★', -10, -32);
+            catCtx.fillText('★', 10, -32);
+
+            // 鼻
+            catCtx.fillStyle = '#FF69B4';
+            catCtx.beginPath();
+            catCtx.arc(0, -25, 4, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 大きな笑顔
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 3;
+            catCtx.beginPath();
+            catCtx.arc(0, -18, 15, 0.1, Math.PI - 0.1);
+            catCtx.stroke();
+
+            // 紙吹雪
+            catCtx.font = '14px Arial';
+            const confetti = ['🎉', '✨', '🌟', '💫'];
+            for (let i = 0; i < 4; i++) {
+                const x = Math.sin(time * 2 + i * 1.5) * 40;
+                const y = -100 + ((time * 50 + i * 50) % 200);
+                catCtx.fillText(confetti[i % confetti.length], x, y);
+            }
+        }
+
+        // 悲しい猫（ゲームオーバー時）
+        function drawSadSideCat(catCtx, time, size, isRight) {
+            // 少し沈む
+            const droop = Math.sin(time * 2) * 2;
+            catCtx.translate(0, 5 + droop);
+
+            // 体
+            catCtx.fillStyle = '#808080';
+            catCtx.beginPath();
+            catCtx.ellipse(0, 20, size * 0.8, size, 0, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 顔
+            catCtx.beginPath();
+            catCtx.arc(0, -30, size * 0.8, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 耳（垂れ気味）
+            catCtx.fillStyle = '#696969';
+            catCtx.beginPath();
+            catCtx.moveTo(-25, -50);
+            catCtx.lineTo(-20, -75);
+            catCtx.lineTo(-5, -55);
+            catCtx.fill();
+            catCtx.beginPath();
+            catCtx.moveTo(25, -50);
+            catCtx.lineTo(20, -75);
+            catCtx.lineTo(5, -55);
+            catCtx.fill();
+
+            // 悲しい目
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 3;
+            catCtx.beginPath();
+            catCtx.arc(-10, -38, 6, 0, Math.PI);
+            catCtx.stroke();
+            catCtx.beginPath();
+            catCtx.arc(10, -38, 6, 0, Math.PI);
+            catCtx.stroke();
+
+            // 涙
+            catCtx.fillStyle = '#87CEEB';
+            catCtx.beginPath();
+            catCtx.ellipse(-10, -25 + (time * 20 % 20), 3, 5, 0, 0, Math.PI * 2);
+            catCtx.fill();
+            catCtx.beginPath();
+            catCtx.ellipse(10, -28 + (time * 25 % 20), 3, 5, 0, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 鼻
+            catCtx.fillStyle = '#FF69B4';
+            catCtx.beginPath();
+            catCtx.arc(0, -25, 4, 0, Math.PI * 2);
+            catCtx.fill();
+
+            // 悲しい口
+            catCtx.strokeStyle = '#333';
+            catCtx.lineWidth = 2;
+            catCtx.beginPath();
+            catCtx.arc(0, -10, 10, Math.PI + 0.3, -0.3);
+            catCtx.stroke();
+        }
+
         // 喜んでいる猫の描画
         function drawHappyCat() {
             const size = 60;
@@ -1446,6 +1796,7 @@
         function gameLoop() {
             update();
             draw();
+            drawSideCats();
             requestAnimationFrame(gameLoop);
         }
 
