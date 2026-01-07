@@ -675,13 +675,7 @@
             catAnimation = {
                 type: type,
                 startTime: Date.now(),
-                duration: 2000,
-                scale: 0,
-                x: canvas.width / 2,
-                y: canvas.height / 2,
-                isDragging: false,
-                dragOffsetX: 0,
-                dragOffsetY: 0
+                duration: 2500
             };
         }
 
@@ -692,37 +686,114 @@
             const elapsed = Date.now() - catAnimation.startTime;
             const progress = elapsed / catAnimation.duration;
 
-            if (progress >= 1 && !catAnimation.isDragging) {
+            if (progress >= 1) {
                 catAnimation = null;
-                canvas.style.cursor = 'default';
                 return;
             }
 
-            const bounce = progress < 0.5 ?
-                2 * progress * progress :
-                1 - Math.pow(-2 * progress + 2, 3) / 2;
-
-            catAnimation.scale = bounce;
-
-            const size = 120 * catAnimation.scale;
-            const dx = mouseX - catAnimation.x;
-            const dy = mouseY - catAnimation.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            if (distance < size && !catAnimation.isDragging) {
-                canvas.style.cursor = 'grab';
-            } else if (!catAnimation.isDragging) {
-                canvas.style.cursor = 'default';
+            // 手が画面内に入ってくるアニメーション
+            let slideIn;
+            if (progress < 0.15) {
+                // 入ってくる
+                slideIn = progress / 0.15;
+            } else if (progress > 0.85) {
+                // 引っ込む
+                slideIn = (1 - progress) / 0.15;
+            } else {
+                slideIn = 1;
             }
 
-            ctx.save();
-            ctx.translate(catAnimation.x, catAnimation.y);
-            ctx.scale(catAnimation.scale, catAnimation.scale);
+            // 手を振るアニメーション
+            const waveSpeed = 12;
+            const waveAngle = Math.sin(elapsed / 1000 * waveSpeed) * 0.3;
 
-            if (catAnimation.type === 'happy') {
-                drawHappyCat();
-            } else {
-                drawSadCat();
+            const pawSize = 80;
+            const yPosition = canvas.height / 2;
+
+            // 左の手を描画
+            ctx.save();
+            const leftX = -pawSize * (1 - slideIn);
+            ctx.translate(leftX, yPosition);
+            ctx.rotate(waveAngle);
+            drawCatPaw(catAnimation.type, 'left');
+            ctx.restore();
+
+            // 右の手を描画
+            ctx.save();
+            const rightX = canvas.width + pawSize * (1 - slideIn);
+            ctx.translate(rightX, yPosition);
+            ctx.rotate(-waveAngle);
+            drawCatPaw(catAnimation.type, 'right');
+            ctx.restore();
+
+            // テキスト表示
+            if (slideIn > 0.5) {
+                ctx.save();
+                ctx.globalAlpha = slideIn;
+                ctx.font = 'bold 28px Arial';
+                ctx.textAlign = 'center';
+                if (catAnimation.type === 'happy') {
+                    ctx.fillStyle = '#FFD700';
+                    ctx.fillText('やったー！', canvas.width / 2, yPosition - 60);
+                } else {
+                    ctx.fillStyle = '#87CEEB';
+                    ctx.fillText('がんばれ...', canvas.width / 2, yPosition - 60);
+                }
+                ctx.restore();
+            }
+        }
+
+        // 猫の手を描画
+        function drawCatPaw(type, side) {
+            const isLeft = side === 'left';
+            const color = type === 'happy' ? '#FFA500' : '#808080';
+            const padColor = type === 'happy' ? '#FFB6C1' : '#A9A9A9';
+
+            ctx.save();
+            if (!isLeft) {
+                ctx.scale(-1, 1);
+            }
+
+            // 腕部分
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.ellipse(30, 0, 50, 30, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 手の平（肉球のベース）
+            ctx.beginPath();
+            ctx.arc(70, 0, 35, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 大きい肉球
+            ctx.fillStyle = padColor;
+            ctx.beginPath();
+            ctx.ellipse(70, 8, 18, 14, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 小さい肉球（指）
+            const toePositions = [
+                { x: 55, y: -18 },
+                { x: 70, y: -22 },
+                { x: 85, y: -18 },
+                { x: 95, y: -5 }
+            ];
+            toePositions.forEach(pos => {
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 8, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // 腕の模様（縞）
+            if (type === 'happy') {
+                ctx.strokeStyle = '#FF8C00';
+                ctx.lineWidth = 4;
+                for (let i = 0; i < 3; i++) {
+                    ctx.beginPath();
+                    ctx.moveTo(10 + i * 20, -20);
+                    ctx.lineTo(15 + i * 20, 20);
+                    ctx.stroke();
+                }
             }
 
             ctx.restore();
@@ -951,51 +1022,12 @@
             const rect = canvas.getBoundingClientRect();
             mouseX = e.clientX - rect.left;
             mouseY = e.clientY - rect.top;
-
-            if (catAnimation && catAnimation.isDragging) {
-                catAnimation.x = mouseX - catAnimation.dragOffsetX;
-                catAnimation.y = mouseY - catAnimation.dragOffsetY;
-            }
         });
 
         canvas.addEventListener('mousedown', (e) => {
-            // 猫のドラッグ判定
-            if (catAnimation) {
-                const rect = canvas.getBoundingClientRect();
-                mouseX = e.clientX - rect.left;
-                mouseY = e.clientY - rect.top;
-
-                const size = 120 * catAnimation.scale;
-                const dx = mouseX - catAnimation.x;
-                const dy = mouseY - catAnimation.y;
-                const distance = Math.sqrt(dx * dx + dy * dy);
-
-                if (distance < size) {
-                    catAnimation.isDragging = true;
-                    catAnimation.dragOffsetX = dx;
-                    catAnimation.dragOffsetY = dy;
-                    canvas.style.cursor = 'grabbing';
-                    return;
-                }
-            }
-
             // レーザー発射
             if (gameState === 'playing') {
                 fireLaser();
-            }
-        });
-
-        canvas.addEventListener('mouseup', () => {
-            if (catAnimation && catAnimation.isDragging) {
-                catAnimation.isDragging = false;
-                canvas.style.cursor = 'default';
-            }
-        });
-
-        canvas.addEventListener('mouseleave', () => {
-            if (catAnimation && catAnimation.isDragging) {
-                catAnimation.isDragging = false;
-                canvas.style.cursor = 'default';
             }
         });
 
